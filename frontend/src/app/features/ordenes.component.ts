@@ -1,0 +1,18 @@
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
+import { ErrorApi, Orden } from '../core/models';
+
+@Component({standalone:true,imports:[FormsModule,DatePipe,DecimalPipe,RouterLink],template:`
+<div class="page-heading"><div><p class="eyebrow">OPERACIÓN DEL TALLER</p><h1>Órdenes de servicio</h1><p class="muted">Consulta las órdenes y su estado de atención.</p></div>@if(auth.has('ORDEN_REGISTRAR')){<a class="button primary" routerLink="/ordenes/nueva">＋ Nueva orden</a>}</div>
+@if(error){<div class="alert error">{{error}}</div>}<section class="panel"><div class="filters"><label>Placa<input [(ngModel)]="placa" placeholder="ABC-123"/></label><label>Estado<select [(ngModel)]="estado"><option value="">Todos</option><option>REGISTRADA</option><option>ANULADA</option></select></label><label>Desde<input type="date" [(ngModel)]="desde"/></label><label>Hasta<input type="date" [(ngModel)]="hasta"/></label><button class="button secondary" (click)="load()">Filtrar</button><button class="button ghost" (click)="clear()">Limpiar</button></div><div class="table-wrap"><table><thead><tr><th>N.º ORDEN</th><th>FECHA</th><th>VEHÍCULO</th><th>KILOMETRAJE</th><th>ESTADO</th><th>TOTAL</th><th></th></tr></thead><tbody>@for(o of rows;track o.id){<tr><td><strong class="order-number">{{o.numero}}</strong><details class="order-details"><summary>Ver detalle ({{o.detalles.length}})</summary>@for(d of o.detalles;track d.servicioId){<div class="detail-line"><span>{{d.codigo}} · {{d.servicio}} × {{d.cantidad}}</span><b>S/ {{d.subtotal|number:'1.2-2'}}</b></div>}</details></td><td>{{o.fecha|date:'dd/MM/yyyy HH:mm'}}</td><td><span class="plate">{{o.placa}}</span></td><td>{{o.kilometraje|number}} km</td><td><span class="status" [class.off]="o.estado==='ANULADA'">{{o.estado}}</span>@if(o.motivoAnulacion){<small class="block muted">{{o.motivoAnulacion}}</small>}</td><td class="price">S/ {{o.total|number:'1.2-2'}}</td><td>@if(canCancel&&o.estado==='REGISTRADA'){<button class="link-button danger-link" (click)="cancel(o)">Anular</button>}</td></tr>}@empty{<tr><td colspan="7" class="table-empty">{{loading?'Cargando órdenes…':'No hay órdenes para esos filtros.'}}</td></tr>}</tbody></table></div></section>`})
+export class OrdenesComponent implements OnInit{
+ private api=inject(ApiService);readonly auth=inject(AuthService);private cdr=inject(ChangeDetectorRef);rows:Orden[]=[];loading=true;error='';placa='';estado='';desde='';hasta='';get canCancel():boolean{return this.auth.has('ORDEN_ANULAR');}
+ ngOnInit():void{this.load();}
+ load():void{this.loading=true;this.error='';this.api.ordenes({placa:this.placa.trim(),estado:this.estado,desde:this.desde,hasta:this.hasta}).subscribe({next:r=>{this.rows=r;this.loading=false;this.cdr.markForCheck();},error:(e:ErrorApi)=>{this.error=e?.error?.mensaje||e?.mensaje||'No se pudieron consultar las órdenes.';this.loading=false;this.cdr.markForCheck();}});}
+ clear():void{this.placa='';this.estado='';this.desde='';this.hasta='';this.load();}
+ cancel(o:Orden):void{const motivo=prompt(`Motivo para anular ${o.numero} (10 a 200 caracteres):`);if(motivo===null)return;if(motivo.trim().length<10||motivo.trim().length>200){this.error='El motivo debe tener entre 10 y 200 caracteres.';this.cdr.markForCheck();return;}this.api.anularOrden(o.id,motivo.trim()).subscribe({next:()=>this.load(),error:(e:ErrorApi)=>{this.error=e?.error?.mensaje||e?.mensaje||'No se pudo anular la orden.';this.cdr.markForCheck();}});}
+}
